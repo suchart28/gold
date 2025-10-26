@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ราคาทองคำวันนี้ (ไทย)</title>
+  <style>
+    :root{--bg:#0b1120;--accent:#fbbf24;--muted:#94a3b8}
+    html,body{height:100%;margin:0}
+    body{display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg);color:white;font-family:Inter,system-ui,Arial,sans-serif;text-align:center}
+    #price{font-size:10vw;line-height:1.1;font-weight:900;color:var(--accent)}
+    #updated{color:var(--muted);font-size:16px;margin-top:12px}
+    button{margin-top:20px;background:transparent;border:2px solid var(--accent);color:var(--accent);font-size:18px;padding:10px 20px;border-radius:8px;cursor:pointer;transition:all .2s}
+    button:hover{background:var(--accent);color:#0b1120}
+    @media(max-width:600px){#price{font-size:20vw}}
+  </style>
+</head>
+<body>
+  <h1>ราคาทองคำวันนี้</h1>
+  <div id="price">--</div>
+  <div id="updated">อัพเดต: --</div>
+  <button id="refresh">รีเฟรชข้อมูล</button>
+
+<script>
+const API_URL = 'https://api.chnwt.dev/thai-gold-api/latest';
+
+async function fetchGoldPrice(){
+  try{
+    const res = await fetch(API_URL);
+    const data = await res.json();
+    if(data.status === 'success'){
+      const sell = data.response.price.gold_bar.sell;
+      document.getElementById('price').textContent = parseFloat(sell.replace(/,/g,'')).toLocaleString('th-TH') + ' บาท';
+      document.getElementById('updated').textContent = 'อัพเดต: ' + data.response.update_time + ' (' + data.response.date + ')';
+    } else {
+      document.getElementById('price').textContent = '--';
+      document.getElementById('updated').textContent = 'ไม่สามารถดึงข้อมูลได้';
+    }
+  } catch(err){
+    document.getElementById('price').textContent = '--';
+    document.getElementById('updated').textContent = 'ข้อผิดพลาด: ' + err.message;
+  }
+}
+
+document.getElementById('refresh').addEventListener('click', fetchGoldPrice);
+fetchGoldPrice();
+</script>
+</body>
+</html>
