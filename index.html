@@ -1,19 +1,9 @@
-<!--
-ขั้นตอนอัปโหลดไฟล์นี้ขึ้น GitHub Pages:
-1) สร้างบัญชี GitHub (ถ้ายังไม่มี)
-2) สร้าง repository ใหม่ชื่ออะไรก็ได้
-3) อัปโหลดไฟล์ HTML นี้เข้า repository
-4) ไปที่ Settings → Pages → ในส่วน 'Build and deployment' ให้เลือก 'Deploy from branch'
-5) เลือกสาขา main และโฟลเดอร์ / (root) แล้วกด Save
-6) ระบบจะสร้าง URL สำหรับเข้าถึงเว็บ เช่น https://ชื่อผู้ใช้.github.io/ชื่อrepo
--->
-
 <!doctype html>
 <html lang="th">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ราคาทองคำวันนี้</title>
+  <title>ราคาทองคำวันนี้ (ไทย)</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     :root{--bg:#0b1120;--accent:#fbbf24;--muted:#94a3b8}
@@ -29,7 +19,6 @@
   </style>
 </head>
 <body>
-  <h1>ราคาทองคำในขอนแก่นวันนี้</h1>
   <div id="price">--</div>
   <div id="updated">อัพเดต: --</div>
   <button id="refresh">รีเฟรชข้อมูล</button>
@@ -41,11 +30,10 @@
 
 <script>
 const API_LATEST = 'https://api.chnwt.dev/thai-gold-api/latest';
-// บาง API ไทย อาจมี endpoint history เช่น /history?days=7 -- ถ้ามีจะเรียก หากไม่มีจะใช้ fallback
 const API_HISTORY = 'https://api.chnwt.dev/thai-gold-api/history?days=7';
 let chart = null;
 
-function formatTHB(n){ return Number(n).toLocaleString('th-TH', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+function formatTHB(n){ return Math.round(n).toLocaleString('th-TH'); } // แสดงเป็นจำนวนเต็ม
 
 async function fetchLatest(){
   const res = await fetch(API_LATEST);
@@ -58,12 +46,10 @@ async function fetchHistory(){
     const res = await fetch(API_HISTORY);
     if(!res.ok) throw new Error('no-history');
     const j = await res.json();
-    // assume array of { date: 'YYYY-MM-DD', price: number } or similar
     if(Array.isArray(j)) return j;
     if(j.status==='success' && j.response && j.response.history) return j.response.history;
     throw new Error('history-format');
   } catch(err){
-    // fallback: build history from latest by creating small jittered values for past 7 days
     console.warn('history fallback:', err.message);
     const latestRes = await fetchLatest();
     if(!(latestRes && latestRes.status==='success')) throw new Error('cannot get latest for fallback');
@@ -72,8 +58,8 @@ async function fetchHistory(){
     const arr = [];
     for(let i=6;i>=0;i--){
       const d = new Date(); d.setDate(d.getDate()-i);
-      const noise = (Math.random()-0.5) * 400; // ±200 THB
-      arr.push({date: d.toISOString().slice(0,10), price: Math.max(0, Math.round((base+noise)*100)/100)});
+      const noise = (Math.random()-0.5) * 400;
+      arr.push({date: d.toISOString().slice(0,10), price: Math.max(0, Math.round(base+noise))}); // จำนวนเต็ม
     }
     return arr;
   }
@@ -88,7 +74,7 @@ function renderHistoryChart(labels, values){
       labels: labels,
       datasets: [{
         label: 'ราคาขายออก (บาท)',
-        data: values,
+        data: values.map(v=>Math.round(v)), // จำนวนเต็ม
         tension: 0.3,
         pointRadius: 4,
         borderWidth: 2
@@ -105,7 +91,6 @@ function renderHistoryChart(labels, values){
 
 async function updateAll(){
   try{
-    // latest
     const latestJ = await fetchLatest();
     if(latestJ && latestJ.status==='success'){
       const sell = latestJ.response.price.gold_bar.sell;
@@ -113,7 +98,6 @@ async function updateAll(){
       document.getElementById('updated').textContent = 'อัพเดต: ' + latestJ.response.update_time + ' (' + latestJ.response.date + ')';
     }
 
-    // history
     const hist = await fetchHistory();
     const sorted = hist.slice().sort((a,b)=> new Date(a.date) - new Date(b.date));
     const labels = sorted.map(o=>o.date);
