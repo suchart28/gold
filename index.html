@@ -24,16 +24,16 @@
   <button id="refresh">รีเฟรชข้อมูล</button>
 
   <div id="chartWrap">
-    <div style="color:var(--muted);margin-bottom:8px;font-size:14px">ราคาทองย้อนหลัง 7 วัน</div>
+    <div style="color:var(--muted);margin-bottom:8px;font-size:14px">ราคาทองย้อนหลัง 30 วัน</div>
     <canvas id="historyChart"></canvas>
   </div>
 
 <script>
 const API_LATEST = 'https://api.chnwt.dev/thai-gold-api/latest';
-const API_HISTORY = 'https://api.chnwt.dev/thai-gold-api/history?days=7';
+const API_HISTORY = 'https://api.chnwt.dev/thai-gold-api/history?days=30';
 let chart = null;
 
-function formatTHB(n){ return Math.round(n).toLocaleString('th-TH'); } // แสดงเป็นจำนวนเต็ม
+function formatTHB(n){ return Math.round(n).toLocaleString('th-TH'); }
 
 async function fetchLatest(){
   const res = await fetch(API_LATEST);
@@ -56,10 +56,10 @@ async function fetchHistory(){
     const sellStr = latestRes.response.price.gold_bar.sell;
     const base = parseFloat(sellStr.replace(/,/g,''));
     const arr = [];
-    for(let i=6;i>=0;i--){
+    for(let i=29;i>=0;i--){
       const d = new Date(); d.setDate(d.getDate()-i);
       const noise = (Math.random()-0.5) * 400;
-      arr.push({date: d.toISOString().slice(0,10), price: Math.max(0, Math.round(base+noise))}); // จำนวนเต็ม
+      arr.push({date: d.toISOString().slice(0,10), price: Math.max(0, Math.round(base+noise))});
     }
     return arr;
   }
@@ -74,7 +74,7 @@ function renderHistoryChart(labels, values){
       labels: labels,
       datasets: [{
         label: 'ราคาขายออก (บาท)',
-        data: values.map(v=>Math.round(v)), // จำนวนเต็ม
+        data: values.map(v=>Math.round(v)),
         tension: 0.3,
         pointRadius: 4,
         borderWidth: 2
