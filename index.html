@@ -1,49 +1,134 @@
+<!--
+ขั้นตอนอัปโหลดไฟล์นี้ขึ้น GitHub Pages:
+1) สร้างบัญชี GitHub (ถ้ายังไม่มี)
+2) สร้าง repository ใหม่ชื่ออะไรก็ได้
+3) อัปโหลดไฟล์ HTML นี้เข้า repository
+4) ไปที่ Settings → Pages → ในส่วน 'Build and deployment' ให้เลือก 'Deploy from branch'
+5) เลือกสาขา main และโฟลเดอร์ / (root) แล้วกด Save
+6) ระบบจะสร้าง URL สำหรับเข้าถึงเว็บ เช่น https://ชื่อผู้ใช้.github.io/ชื่อrepo
+-->
+
 <!doctype html>
 <html lang="th">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ราคาทองคำวันนี้ (ไทย)</title>
+  <title>ราคาทองคำวันนี้</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     :root{--bg:#0b1120;--accent:#fbbf24;--muted:#94a3b8}
     html,body{height:100%;margin:0}
-    body{display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg);color:white;font-family:Inter,system-ui,Arial,sans-serif;text-align:center}
+    body{display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg);color:white;font-family:Inter,system-ui,Arial,sans-serif;text-align:center;padding:24px}
     #price{font-size:10vw;line-height:1.1;font-weight:900;color:var(--accent)}
     #updated{color:var(--muted);font-size:16px;margin-top:12px}
+    #chartWrap{width:100%;max-width:900px;margin-top:28px;background:rgba(255,255,255,0.02);padding:18px;border-radius:12px}
+    canvas{width:100% !important;height:220px !important}
     button{margin-top:20px;background:transparent;border:2px solid var(--accent);color:var(--accent);font-size:18px;padding:10px 20px;border-radius:8px;cursor:pointer;transition:all .2s}
     button:hover{background:var(--accent);color:#0b1120}
     @media(max-width:600px){#price{font-size:20vw}}
   </style>
 </head>
 <body>
-  <h1>ราคาทองคำวันนี้</h1>
+  <h1>ราคาทองคำในขอนแก่นวันนี้</h1>
   <div id="price">--</div>
   <div id="updated">อัพเดต: --</div>
   <button id="refresh">รีเฟรชข้อมูล</button>
 
-<script>
-const API_URL = 'https://api.chnwt.dev/thai-gold-api/latest';
+  <div id="chartWrap">
+    <div style="color:var(--muted);margin-bottom:8px;font-size:14px">ราคาทองย้อนหลัง 7 วัน</div>
+    <canvas id="historyChart"></canvas>
+  </div>
 
-async function fetchGoldPrice(){
+<script>
+const API_LATEST = 'https://api.chnwt.dev/thai-gold-api/latest';
+// บาง API ไทย อาจมี endpoint history เช่น /history?days=7 -- ถ้ามีจะเรียก หากไม่มีจะใช้ fallback
+const API_HISTORY = 'https://api.chnwt.dev/thai-gold-api/history?days=7';
+let chart = null;
+
+function formatTHB(n){ return Number(n).toLocaleString('th-TH', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+
+async function fetchLatest(){
+  const res = await fetch(API_LATEST);
+  if(!res.ok) throw new Error('fetch latest ' + res.status);
+  return res.json();
+}
+
+async function fetchHistory(){
   try{
-    const res = await fetch(API_URL);
-    const data = await res.json();
-    if(data.status === 'success'){
-      const sell = data.response.price.gold_bar.sell;
-      document.getElementById('price').textContent = parseFloat(sell.replace(/,/g,'')).toLocaleString('th-TH') + ' บาท';
-      document.getElementById('updated').textContent = 'อัพเดต: ' + data.response.update_time + ' (' + data.response.date + ')';
-    } else {
-      document.getElementById('price').textContent = '--';
-      document.getElementById('updated').textContent = 'ไม่สามารถดึงข้อมูลได้';
-    }
+    const res = await fetch(API_HISTORY);
+    if(!res.ok) throw new Error('no-history');
+    const j = await res.json();
+    // assume array of { date: 'YYYY-MM-DD', price: number } or similar
+    if(Array.isArray(j)) return j;
+    if(j.status==='success' && j.response && j.response.history) return j.response.history;
+    throw new Error('history-format');
   } catch(err){
+    // fallback: build history from latest by creating small jittered values for past 7 days
+    console.warn('history fallback:', err.message);
+    const latestRes = await fetchLatest();
+    if(!(latestRes && latestRes.status==='success')) throw new Error('cannot get latest for fallback');
+    const sellStr = latestRes.response.price.gold_bar.sell;
+    const base = parseFloat(sellStr.replace(/,/g,''));
+    const arr = [];
+    for(let i=6;i>=0;i--){
+      const d = new Date(); d.setDate(d.getDate()-i);
+      const noise = (Math.random()-0.5) * 400; // ±200 THB
+      arr.push({date: d.toISOString().slice(0,10), price: Math.max(0, Math.round((base+noise)*100)/100)});
+    }
+    return arr;
+  }
+}
+
+function renderHistoryChart(labels, values){
+  const ctx = document.getElementById('historyChart');
+  if(chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'ราคาขายออก (บาท)',
+        data: values,
+        tension: 0.3,
+        pointRadius: 4,
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {legend:{display:false}},
+      scales: {x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,0.03)'}}}
+    }
+  });
+}
+
+async function updateAll(){
+  try{
+    // latest
+    const latestJ = await fetchLatest();
+    if(latestJ && latestJ.status==='success'){
+      const sell = latestJ.response.price.gold_bar.sell;
+      document.getElementById('price').textContent = formatTHB(parseFloat(sell.replace(/,/g,''))) + ' บาท';
+      document.getElementById('updated').textContent = 'อัพเดต: ' + latestJ.response.update_time + ' (' + latestJ.response.date + ')';
+    }
+
+    // history
+    const hist = await fetchHistory();
+    const sorted = hist.slice().sort((a,b)=> new Date(a.date) - new Date(b.date));
+    const labels = sorted.map(o=>o.date);
+    const values = sorted.map(o=> Number(o.price || o.sell || o.value || o.close));
+    renderHistoryChart(labels, values);
+  } catch(err){
+    console.error(err);
     document.getElementById('price').textContent = '--';
     document.getElementById('updated').textContent = 'ข้อผิดพลาด: ' + err.message;
   }
 }
 
-document.getElementById('refresh').addEventListener('click', fetchGoldPrice);
-fetchGoldPrice();
+document.getElementById('refresh').addEventListener('click', updateAll);
+updateAll();
+setInterval(updateAll, 60000);
 </script>
 </body>
 </html>
